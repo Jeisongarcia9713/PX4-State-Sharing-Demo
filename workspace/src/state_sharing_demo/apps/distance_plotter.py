@@ -60,8 +60,8 @@ class DroneDistanceMonitor(Node):
         
         # Subscribe to state sharing messages from all drones
         self.subscribers = []
-        for i in range(self.num_drones):
-            topic_name = f'/px4_{i}/fmu/out/incoming_state_sharing'
+        for i in range(1, self.num_drones + 1):
+            topic_name = f'/uav_{i}/fmu/out/incoming_state_sharing'
             subscriber = self.create_subscription(
                 StateSharingMsg,
                 topic_name,
@@ -79,15 +79,15 @@ class DroneDistanceMonitor(Node):
         
         Args:
             msg: StateSharingMsg containing drone position
-            drone_id: ID of the drone (0-indexed)
+            drone_id: ID of the drone (1-indexed instance)
         """
         with self.data_lock:
-            # Store drone position (using agent_id from message if available, otherwise use drone_id)
-            agent_id = getattr(msg, 'agent_id', drone_id + 1)  # PX4 uses 1-indexed agent_id
+            # Store drone position (using sysid from message if available, otherwise use drone_id + 1)
+            sysid = getattr(msg, 'sysid', drone_id + 1)
             
-            self.drone_positions[agent_id] = {
-                'lat': msg.global_position_lat,
-                'lon': msg.global_position_lon,
+            self.drone_positions[sysid] = {
+                'lat': msg.global_position_lat * 1e-7,
+                'lon': msg.global_position_lon * 1e-7,
                 'alt': msg.global_position_alt,
                 'timestamp': msg.timestamp,
                 'q': msg.q
@@ -101,8 +101,8 @@ class DroneDistanceMonitor(Node):
         """Calculate distances between all pairs of drones."""
         current_time = time.time()
         
-        # Get list of active drone IDs
-        drone_ids = list(self.drone_positions.keys())
+        # Get sorted list of active drone IDs
+        drone_ids = sorted(self.drone_positions.keys())
         
         # Calculate pairwise distances
         distances = {}

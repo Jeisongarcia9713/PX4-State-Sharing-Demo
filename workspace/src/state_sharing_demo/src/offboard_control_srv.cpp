@@ -25,18 +25,18 @@ OffboardControl::OffboardControl(const rclcpp::NodeOptions &opts)
     min_altitude_ = declare_parameter<double>("min_altitude", 5.0); // [m]
 
     /* ─── Derive namespace & MAVLink SYS_ID ───────────────────────────────*/
-    std::string ns = get_namespace();  // e.g. "/px4_2"
-    if (ns.rfind("/px4_", 0) == 0) {
+    std::string ns = get_namespace();  // e.g. "/uav_2"
+    if (ns.rfind("/uav_", 0) == 0) {
         ident_ = static_cast<uint8_t>(std::stoi(ns.substr(5)));  // zero‑indexed
     } else {
         RCLCPP_WARN(get_logger(),
-                    "Namespace '%s' does not follow /px4_N; default ident = 1",
+                    "Namespace '%s' does not follow /uav_N; default ident = 1",
                     ns.c_str());
         ident_ = 1;
     }
 
     vel_ctrl_.setIdent(ident_);
-    std::string prefix = "/" + ns.substr(1) + "/fmu/";  // "/px4_N/fmu/"
+    std::string prefix = "/" + ns.substr(1) + "/fmu/";  // "/uav_N/fmu/"
 
     /* ─── Publishers / client / subscriber ────────────────────────────────*/
     offboard_ctrl_mode_pub_ = create_publisher<OffboardControlMode>(
@@ -134,10 +134,14 @@ void OffboardControl::publishVelocitySetpoint(double vx, double vy, double vz, d
 void OffboardControl::startStateSharing()
 {
   StateSharingControlMsg msg{};
-  msg.command = 1;
+  msg.timestamp = get_clock()->now().nanoseconds() / 1000ULL;
+  msg.command = StateSharingControlMsg::COMMAND_START;
+  msg.data_flags = StateSharingControlMsg::DATA_FLAG_POSITION | StateSharingControlMsg::DATA_FLAG_ACCELERATION;
+  msg.sharing_period = 2.0f; // 10 Hz
   state_sharing_ctrl_pub_->publish(msg);
   RCLCPP_INFO(get_logger(),
-              "Sent StateSharingControl command=1 on %s",
+              "Sent StateSharingControl command=%u data_flags=%u period=%.2f on %s",
+              msg.command, msg.data_flags, msg.sharing_period,
               state_sharing_ctrl_pub_->get_topic_name());
 }
 
@@ -178,13 +182,15 @@ void OffboardControl::sendLandingCommand()
   tf2::Quaternion q(current_state_.q[0], current_state_.q[1], 
     current_state_.q[2], current_state_.q[3]);
 
-  double roll, pitch, yaw;
-  tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);  // Convert to Euler angles
+  double roll = 0.0, pitch = 0.0, yaw = 0.0;
+  if (q.length2() > 1e-6) {
+    tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);  // Convert to Euler angles
+  }
 
 
   msg.param4 = yaw;
-  msg.param5 = current_state_.global_position_lat;
-  msg.param6 = current_state_.global_position_lon;
+  msg.param5 = static_cast<double>(current_state_.global_position_lat) * 1e-7;
+  msg.param6 = static_cast<double>(current_state_.global_position_lon) * 1e-7;
   msg.param7 = 0.0;
   msg.target_system    = ident_ + 1;  // PX4 expects 1‑indexed
   msg.target_component = 1;
@@ -281,13 +287,15 @@ void OffboardControl::onStateSharing(StateSharingMsg::SharedPtr msg)
     return;
   }
 
-  if (msg->agent_id == ident_ + 1){
+  if (msg->sysid == ident_ + 1){
     current_state_ = *msg;
     return;}
   // 1) Compute neighbour’s NED in home frame
+  const double lat = static_cast<double>(msg->global_position_lat) * 1e-7;
+  const double lon = static_cast<double>(msg->global_position_lon) * 1e-7;
   Eigen::Vector3d neigh_ned = llhToNed(
-    msg->global_position_lat,
-    msg->global_position_lon,
+    lat,
+    lon,
     msg->global_position_alt,
     ref_lat_, ref_lon_, ref_alt_
   );
@@ -300,10 +308,10 @@ void OffboardControl::onStateSharing(StateSharingMsg::SharedPtr msg)
   // // 3) Log ego‐centric coordinates
   // RCLCPP_INFO(get_logger(),
   //   "Agent %u relative NED [N=%.2f, E=%.2f, D=%.2f]",
-  //   msg->agent_id, rel.x(), rel.y(), rel.z());
+  //   msg->sysid, rel.x(), rel.y(), rel.z());
 
   // 4) Store in the controller’s rel‐distance map
-  vel_ctrl_.updateNeighbourDistance(msg->agent_id, rel);
+  vel_ctrl_.updateNeighbourDistance(msg->sysid, rel);
 }
 
 /*──────────────────────────────────────────────────────────────────────────*/

@@ -10,7 +10,7 @@ cd ..
 parent_folder=$PWD
 cd $current_folder
 
-BRANCH_NAME="${1:-test/state_sharing}"
+BRANCH_NAME="${1:-test_state_sharing}"
 IMAGE_VERSION="${BRANCH_NAME//\//.}"
 IMAGE_NAME="px4_x86_64:${IMAGE_VERSION}"
 echo the version of the image to run is $IMAGE_NAME

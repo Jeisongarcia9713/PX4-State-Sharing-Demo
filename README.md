@@ -19,7 +19,7 @@ The demo implements distributed formation control where each UAV:
 
 - **PX4 Module**: Broadcasts vehicle state via MAVLink `STATE_SHARING_MSG`
 - **MAVLink Transport**: Uses broadcast/multicast for efficient network utilization
-- **micro-DDS Bridge**: Forwards MAVLink messages to ROS2 topics (`/px4_N/fmu/out/incoming_state_sharing`)
+- **micro-DDS Bridge**: Forwards MAVLink messages to ROS2 topics (`/uav_N/fmu/out/incoming_state_sharing`)
 - **ROS2 Controllers**: Subscribe to neighbor states for formation algorithms
 
 ### Key Integration Points
@@ -41,7 +41,7 @@ The demo implements distributed formation control where each UAV:
 ### Phase 1: State Sharing Initialization
 ```
 [offboard_control] Sent StateSharingControl command=1
-[offboard_control] waiting for subscriber on '/px4_1/fmu/in/incoming_state_sharing_control'
+[offboard_control] waiting for subscriber on '/uav_1/fmu/in/incoming_state_sharing_control'
 ```
 
 ### Phase 2: Neighbor Discovery  
